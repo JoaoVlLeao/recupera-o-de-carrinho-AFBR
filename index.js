@@ -1,4 +1,4 @@
-// index.js - Bot AquaFit (APENAS CARRINHO: Payload Real + Segurança + QR Code Web com Refresh)
+// index.js - Bot AquaFit (APENAS CARRINHO: Payload Real + Segurança + QR Code Web com Refresh + Retry Gemini)
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -179,36 +179,40 @@ REGRAS GERAIS:
 `;
 
 async function gerarRespostaGemini(historico, dados) {
-    try {
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    
+    let systemInstruction = PROMPT_CARRINHO;
+    let promptUsuario = `
+        Contexto Carrinho:
+        Cliente: ${dados.nome}
+        Produtos: ${dados.produtos}
+        Link: ${dados.link}
         
-        let systemInstruction = PROMPT_CARRINHO;
-        let promptUsuario = `
-            Contexto Carrinho:
-            Cliente: ${dados.nome}
-            Produtos: ${dados.produtos}
-            Link: ${dados.link}
-            
-            Se for a primeira mensagem, gere EXATAMENTE conforme a "INSTRUÇÃO OBRIGATÓRIA PARA A PRIMEIRA MENSAGEM", substituindo o {LINK} pelo link original.
-            `;
+        Se for a primeira mensagem, gere EXATAMENTE conforme a "INSTRUÇÃO OBRIGATÓRIA PARA A PRIMEIRA MENSAGEM", substituindo o {LINK} pelo link original.
+        `;
 
-        const chat = model.startChat({
-            history: [
-                { role: "user", parts: [{ text: `Instrução do Sistema: ${systemInstruction}` }] },
-                ...historico
-            ]
-        });
+    const chat = model.startChat({
+        history: [
+            { role: "user", parts: [{ text: `Instrução do Sistema: ${systemInstruction}` }] },
+            ...historico
+        ]
+    });
 
-        let msgEnvio = "Gere a próxima resposta.";
-        if (historico.length === 0) {
-            msgEnvio = promptUsuario;
+    let msgEnvio = "Gere a próxima resposta.";
+    if (historico.length === 0) {
+        msgEnvio = promptUsuario;
+    }
+
+    // Loop de tentativas infinitas em caso de erro (ex: 429)
+    while (true) {
+        try {
+            const result = await chat.sendMessage(msgEnvio);
+            return result.response.text();
+        } catch (error) {
+            console.error("Erro Gemini (Tentando novamente em 60s):", error.message);
+            // Aguarda 60 segundos antes de tentar novamente
+            await new Promise(resolve => setTimeout(resolve, 60000));
         }
-
-        const result = await chat.sendMessage(msgEnvio);
-        return result.response.text();
-    } catch (error) {
-        console.error("Erro Gemini:", error);
-        return "Oi! Já te respondo, só um minuto.";
     }
 }
 
@@ -224,7 +228,6 @@ const client = new Client({
 // GERA O QR CODE PARA EXIBIÇÃO NA WEB
 client.on('qr', (qr) => {
     console.log('QR RECEIVED no Terminal');
-    // Gera a imagem do QR Code em Base64 para exibir no navegador
     qrcode.toDataURL(qr, (err, url) => {
         if (!err) {
             latestQrCode = url; 
@@ -347,6 +350,7 @@ app.post('/webhook/yampi', async (req, res) => {
             getSafe(resource, "shipping_address.data.phone.full_number") ||
             getSafe(resource, "shipping_address.phone.full_number") ||
             getSafe(resource, "spreadsheet.data.customer_phone") ||
+            getSafe(resource, "phone.full_number") || // ADICIONADO PARA LER EVENTO CUSTOMER.CREATED
             "";
 
         telefone = telefone.replace(/\D/g, "");
@@ -378,7 +382,7 @@ app.post('/webhook/yampi', async (req, res) => {
         if (data.event === "checkout.abandoned" || data.event === "cart.reminder") {
             tipoEvento = "Carrinho Abandonado";
         } else {
-            console.log("🛑 Evento ignorado (Não é Carrinho Abandonado).");
+            console.log(`🛑 Evento ignorado (${data.event}). Não é Carrinho Abandonado.`);
             return res.status(200).send("Ignored");
         }
 
