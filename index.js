@@ -1,4 +1,4 @@
-// index.js - Bot AquaFit (APENAS CARRINHO: Payload Real + Segurança + QR Code Web)
+// index.js - Bot AquaFit (APENAS CARRINHO: Payload Real + Segurança + QR Code Web com Refresh)
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -7,7 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import wwebjs from 'whatsapp-web.js';
-import qrcode from "qrcode"; // Mudamos para 'qrcode' para gerar imagem/html
+import qrcode from "qrcode"; // Use a biblioteca 'qrcode' no package.json
 
 const { Client, LocalAuth, MessageMedia } = wwebjs;
 
@@ -95,7 +95,7 @@ const conversationsByKey = new Map();
 const lidCache = new Map(); 
 const allowedChats = new Set(); 
 const messageBuffers = new Map();
-let latestQrCode = null; // Variável para armazenar o último QR Code gerado
+let latestQrCode = null; 
 
 function loadState() {
     const data = safeReadJSON(PERSISTENCE_FILE, { conversations: {}, lidCache: {}, allowed: [] });
@@ -222,17 +222,18 @@ const client = new Client({
 
 // GERA O QR CODE PARA EXIBIÇÃO NA WEB
 client.on('qr', (qr) => {
-    console.log('QR RECEIVED', qr);
+    console.log('QR RECEIVED no Terminal');
+    // Gera a imagem do QR Code em Base64 para exibir no navegador
     qrcode.toDataURL(qr, (err, url) => {
         if (!err) {
-            latestQrCode = url; // Salva a imagem base64 do QR code
+            latestQrCode = url; 
         }
     });
 });
 
 client.on('ready', () => {
     console.log('✅ Bot Online (APENAS CARRINHO)!');
-    latestQrCode = "CONNECTED"; // Indica que já conectou
+    latestQrCode = "CONNECTED"; 
 });
 
 client.on('message_create', async (msg) => {
@@ -297,14 +298,37 @@ const getSafe = (obj, path) => {
     return path.split('.').reduce((acc, part) => acc && acc[part], obj);
 };
 
-// ROTA PARA EXIBIR O QR CODE
+// ROTA COM AUTO-REFRESH PARA O QR CODE
 app.get('/', (req, res) => {
+    // Cabeçalho de refresh a cada 3 segundos
+    const metaRefresh = '<meta http-equiv="refresh" content="3">';
+    const style = '<style>body{font-family:sans-serif;text-align:center;padding-top:50px;}</style>';
+
     if (latestQrCode === "CONNECTED") {
-        res.send('<h1>Bot Conectado com Sucesso! ✅</h1>');
+        res.send(`
+            <html><head>${style}</head>
+            <body>
+                <h1>✅ Bot Conectado com Sucesso!</h1>
+                <p>Você pode fechar esta página.</p>
+            </body></html>
+        `);
     } else if (latestQrCode) {
-        res.send(`<h1>Escaneie o QR Code abaixo:</h1><img src="${latestQrCode}" />`);
+        res.send(`
+            <html><head>${metaRefresh}${style}</head>
+            <body>
+                <h1>Escaneie o QR Code abaixo:</h1>
+                <p>A página atualiza sozinha a cada 3 segundos para garantir que o código seja válido.</p>
+                <img src="${latestQrCode}" width="300"/>
+            </body></html>
+        `);
     } else {
-        res.send('<h1>Aguardando QR Code... (Recarregue a página em alguns segundos)</h1>');
+        res.send(`
+            <html><head>${metaRefresh}${style}</head>
+            <body>
+                <h1>Aguardando QR Code...</h1>
+                <p>O sistema está iniciando. Aguarde...</p>
+            </body></html>
+        `);
     }
 });
 
