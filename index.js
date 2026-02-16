@@ -1,4 +1,4 @@
-// index.js - Bot AquaFit (APENAS CARRINHO: Payload Real + Segurança)
+// index.js - Bot AquaFit (APENAS CARRINHO: Payload Real + Segurança + QR Code Web)
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -7,7 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import wwebjs from 'whatsapp-web.js';
-import qrcode from "qrcode-terminal";
+import qrcode from "qrcode"; // Mudamos para 'qrcode' para gerar imagem/html
 
 const { Client, LocalAuth, MessageMedia } = wwebjs;
 
@@ -95,6 +95,7 @@ const conversationsByKey = new Map();
 const lidCache = new Map(); 
 const allowedChats = new Set(); 
 const messageBuffers = new Map();
+let latestQrCode = null; // Variável para armazenar o último QR Code gerado
 
 function loadState() {
     const data = safeReadJSON(PERSISTENCE_FILE, { conversations: {}, lidCache: {}, allowed: [] });
@@ -219,8 +220,20 @@ const client = new Client({
     }
 });
 
-client.on('qr', (qr) => qrcode.generate(qr, { small: true }));
-client.on('ready', () => console.log('✅ Bot Online (APENAS CARRINHO)!'));
+// GERA O QR CODE PARA EXIBIÇÃO NA WEB
+client.on('qr', (qr) => {
+    console.log('QR RECEIVED', qr);
+    qrcode.toDataURL(qr, (err, url) => {
+        if (!err) {
+            latestQrCode = url; // Salva a imagem base64 do QR code
+        }
+    });
+});
+
+client.on('ready', () => {
+    console.log('✅ Bot Online (APENAS CARRINHO)!');
+    latestQrCode = "CONNECTED"; // Indica que já conectou
+});
 
 client.on('message_create', async (msg) => {
     store.saveWppMessage(msg);
@@ -274,7 +287,7 @@ client.on('message_create', async (msg) => {
 
 client.initialize();
 
-// ======================= WEBHOOK YAMPI =======================
+// ======================= WEBHOOK YAMPI & SERVER =======================
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -283,6 +296,17 @@ app.use(cors());
 const getSafe = (obj, path) => {
     return path.split('.').reduce((acc, part) => acc && acc[part], obj);
 };
+
+// ROTA PARA EXIBIR O QR CODE
+app.get('/', (req, res) => {
+    if (latestQrCode === "CONNECTED") {
+        res.send('<h1>Bot Conectado com Sucesso! ✅</h1>');
+    } else if (latestQrCode) {
+        res.send(`<h1>Escaneie o QR Code abaixo:</h1><img src="${latestQrCode}" />`);
+    } else {
+        res.send('<h1>Aguardando QR Code... (Recarregue a página em alguns segundos)</h1>');
+    }
+});
 
 app.post('/webhook/yampi', async (req, res) => {
     try {
