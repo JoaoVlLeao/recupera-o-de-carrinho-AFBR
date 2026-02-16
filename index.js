@@ -7,7 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import wwebjs from 'whatsapp-web.js';
-import qrcode from "qrcode"; // Use a biblioteca 'qrcode' no package.json
+import qrcode from "qrcode"; 
 
 const { Client, LocalAuth, MessageMedia } = wwebjs;
 
@@ -25,7 +25,7 @@ const STORE_FILE = path.join(DATA_DIR, "wpp_store.json");
 
 // ======================= GEMINI SETUP =======================
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const MODEL_NAME = "gemini-2.5-flash"; 
+const MODEL_NAME = "gemini-2.0-flash"; 
 
 // ======================= STORE LOCAL =======================
 function makeLocalInMemoryStore() {
@@ -88,6 +88,48 @@ function safeReadJSON(file, fallback) {
 
 function safeWriteJSON(file, data) {
     try { fs.writeFileSync(file, JSON.stringify(data, null, 2)); } catch (e) {}
+}
+
+// ======================= VALIDAÇÃO DE NÚMERO ROBUSTA (FIX NO-LID) =======================
+async function getWhatsappId(client, number) {
+    // 1. Limpeza básica
+    let cleanNumber = number.replace(/\D/g, "");
+    
+    // 2. Garante DDI 55 se não tiver e parecer BR
+    if (!cleanNumber.startsWith("55") && (cleanNumber.length === 10 || cleanNumber.length === 11)) {
+        cleanNumber = "55" + cleanNumber;
+    }
+
+    try {
+        // Tentativa 1: Do jeito que veio
+        const id1 = await client.getNumberId(cleanNumber);
+        if (id1) return id1._serialized;
+
+        // Lógica específica para Brasil (DDD + 9 dígitos vs 8 dígitos)
+        if (cleanNumber.startsWith("55") && cleanNumber.length >= 12) {
+            const ddd = cleanNumber.substring(2, 4);
+            const resto = cleanNumber.substring(4);
+
+            let tentativa2 = "";
+            
+            if (resto.length === 9 && resto.startsWith("9")) {
+                // Tem 9 digitos, tenta tirar o 9
+                tentativa2 = "55" + ddd + resto.substring(1);
+            } else if (resto.length === 8) {
+                // Tem 8 digitos, tenta por o 9
+                tentativa2 = "55" + ddd + "9" + resto;
+            }
+
+            if (tentativa2) {
+                const id2 = await client.getNumberId(tentativa2);
+                if (id2) return id2._serialized;
+            }
+        }
+    } catch (e) {
+        console.error("Erro ao validar número:", e.message);
+    }
+    
+    return null; // Retorna null se falhar, para não quebrar o send
 }
 
 // ======================= ESTADO =======================
@@ -360,18 +402,13 @@ app.post('/webhook/yampi', async (req, res) => {
             return res.status(400).send("Sem telefone");
         }
 
-        if (telefone.length <= 11) telefone = "55" + telefone;
+        // Tenta validar o número com o WhatsApp ANTES de continuar
+        // Isso resolve o erro "No LID for user"
+        const chatIdFinal = await getWhatsappId(client, telefone);
 
-        const chatIdProvisorio = `${telefone}@c.us`;
-        let chatIdFinal = chatIdProvisorio;
-
-        try {
-            const contactId = await client.getNumberId(chatIdProvisorio);
-            if (contactId && contactId._serialized) {
-                chatIdFinal = contactId._serialized;
-            }
-        } catch (e) {
-            console.error("Erro na validação do número:", e.message);
+        if (!chatIdFinal) {
+            console.log(`❌ Número não registrado no WhatsApp ou inválido: ${telefone}`);
+            return res.status(200).send("Invalid Number");
         }
 
         const systemKey = normalizeChatKey(chatIdFinal);
@@ -395,7 +432,7 @@ app.post('/webhook/yampi', async (req, res) => {
         const itemsList = getSafe(resource, "items.data") || resource.items || [];
         const produtosStr = Array.isArray(itemsList) ? itemsList.map(i => i.product_name || getSafe(i, "sku.data.title") || "Produto").join(", ") : "Produtos";
 
-        // --- FORMATAÇÃO DO LINK (REMOÇÃO DE LIXO) ---
+        // --- FORMATAÇÃO DO LINK (MANTIDO) ---
         let rawLink = resource.checkout_url || resource.simulate_url || resource.status_url || "";
         let finalLink = rawLink;
 
@@ -424,7 +461,7 @@ app.post('/webhook/yampi', async (req, res) => {
         allowedChats.add(systemKey);
         persistState();
 
-        console.log(`🚀 Start: ${dados.nome} - ${tipoEvento} - Tel: ${telefone}`);
+        console.log(`🚀 Start: ${dados.nome} - ${tipoEvento} - Tel: ${telefone} - ID: ${chatIdFinal}`);
 
         let msgInicial = await gerarRespostaGemini([], dados);
         msgInicial = appendHiddenTag(msgInicial, systemKey);
