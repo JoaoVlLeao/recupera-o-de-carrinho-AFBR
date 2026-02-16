@@ -395,11 +395,26 @@ app.post('/webhook/yampi', async (req, res) => {
         const itemsList = getSafe(resource, "items.data") || resource.items || [];
         const produtosStr = Array.isArray(itemsList) ? itemsList.map(i => i.product_name || getSafe(i, "sku.data.title") || "Produto").join(", ") : "Produtos";
 
+        // --- FORMATAÇÃO DO LINK (REMOÇÃO DE LIXO) ---
+        let rawLink = resource.checkout_url || resource.simulate_url || resource.status_url || "";
+        let finalLink = rawLink;
+
+        if (rawLink) {
+            try {
+                const urlObj = new URL(rawLink);
+                const cartToken = urlObj.searchParams.get("cart_token");
+                // Reconstrói o link apenas com a base e o token essencial
+                finalLink = `${urlObj.origin}${urlObj.pathname}${cartToken ? '?cart_token=' + cartToken : ''}`;
+            } catch (err) {
+                console.error("Erro ao formatar link:", err.message);
+            }
+        }
+
         const dados = {
             nome: nomeCliente,
             tipo: tipoEvento,
             produtos: produtosStr,
-            link: resource.checkout_url || resource.simulate_url || resource.status_url || "",
+            link: finalLink,
             valor: resource.total_price || getSafe(resource, "totalizers.total") || "Valor total"
         };
 
