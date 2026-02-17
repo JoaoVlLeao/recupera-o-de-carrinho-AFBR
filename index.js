@@ -26,7 +26,7 @@ const STORE_FILE = path.join(DATA_DIR, "wpp_store.json");
 // ======================= GEMINI SETUP =======================
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // ALTERADO PARA 1.5-FLASH PARA EVITAR ERRO 429 (RESOURCE EXHAUSTED)
-const MODEL_NAME = "gemini-1.5-flash"; 
+const MODEL_NAME = "gemini-2.5-pro"; 
 
 // ======================= STORE LOCAL =======================
 function makeLocalInMemoryStore() {
