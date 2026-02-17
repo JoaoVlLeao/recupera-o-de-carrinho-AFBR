@@ -25,7 +25,8 @@ const STORE_FILE = path.join(DATA_DIR, "wpp_store.json");
 
 // ======================= GEMINI SETUP =======================
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const MODEL_NAME = "gemini-2.0-flash"; 
+// ALTERADO PARA 1.5-FLASH PARA EVITAR ERRO 429 (RESOURCE EXHAUSTED)
+const MODEL_NAME = "gemini-1.5-flash"; 
 
 // ======================= STORE LOCAL =======================
 function makeLocalInMemoryStore() {
@@ -381,7 +382,8 @@ app.get('/', (req, res) => {
 app.post('/webhook/yampi', async (req, res) => {
     try {
         const data = req.body;
-        console.log("📥 Payload Yampi Recebido:", JSON.stringify(data, null, 2));
+        // LOG SIMPLIFICADO PARA EVITAR POLUIÇÃO NO CONSOLE
+        console.log(`📥 Payload Yampi Recebido: Evento [${data.event}]`); 
 
         const resource = data.resource || {};
         
