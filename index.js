@@ -11,6 +11,15 @@ import qrcode from "qrcode";
 
 const { Client, LocalAuth, MessageMedia } = wwebjs;
 
+// ======================= PREVENÇÃO DE CRASH (ANTI-STOPPING CONTAINER) =======================
+process.on('uncaughtException', (err) => {
+    console.error('🔥 CRÍTICO: Erro não tratado (uncaughtException):', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 CRÍTICO: Rejeição de promessa não tratada:', reason);
+});
+
 // ======================= CONFIGURAÇÃO DE ARQUIVOS =====================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +34,7 @@ const STORE_FILE = path.join(DATA_DIR, "wpp_store.json");
 
 // ======================= GEMINI SETUP =======================
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// ALTERADO PARA 1.5-FLASH PARA EVITAR ERRO 429 (RESOURCE EXHAUSTED)
+// ALTERADO PARA 1.5-FLASH PARA ESTABILIDADE E EVITAR ERRO 429/CRASH
 const MODEL_NAME = "gemini-2.5-pro"; 
 
 // ======================= STORE LOCAL =======================
@@ -259,12 +268,22 @@ async function gerarRespostaGemini(historico, dados) {
     }
 }
 
-// ======================= CLIENTE WHATSAPP =======================
+// ======================= CLIENTE WHATSAPP (OTIMIZADO LOW MEMORY) =======================
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: DATA_DIR }),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        // FLAGS ESSENCIAIS PARA NÃO CAUSAR "STOPPING CONTAINER"
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ]
     }
 });
 
@@ -281,6 +300,12 @@ client.on('qr', (qr) => {
 client.on('ready', () => {
     console.log('✅ Bot Online (APENAS CARRINHO)!');
     latestQrCode = "CONNECTED"; 
+});
+
+client.on('disconnected', (reason) => {
+    console.log('❌ Cliente desconectado! Tentando reconectar...', reason);
+    latestQrCode = null;
+    client.initialize();
 });
 
 client.on('message_create', async (msg) => {
