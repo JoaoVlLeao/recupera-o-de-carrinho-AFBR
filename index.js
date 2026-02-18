@@ -34,7 +34,7 @@ const STORE_FILE = path.join(DATA_DIR, "wpp_store.json");
 
 // ======================= GEMINI SETUP =======================
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// ALTERADO PARA 1.5-FLASH PARA ESTABILIDADE E EVITAR ERRO 429/CRASH
+// MANTIDO O MODELO SOLICITADO
 const MODEL_NAME = "gemini-2.5-pro"; 
 
 // ======================= STORE LOCAL =======================
@@ -255,15 +255,24 @@ async function gerarRespostaGemini(historico, dados) {
         msgEnvio = promptUsuario;
     }
 
-    // Loop de tentativas infinitas em caso de erro (ex: 429)
-    while (true) {
+    // FIX: LIMITADOR DE TENTATIVAS PARA EVITAR LOOP INFINITO NO ERRO 503
+    let tentativas = 0;
+    const maxTentativas = 3; 
+
+    while (tentativas < maxTentativas) {
         try {
             const result = await chat.sendMessage(msgEnvio);
             return result.response.text();
         } catch (error) {
-            console.error("Erro Gemini (Tentando novamente em 60s):", error.message);
-            // Aguarda 60 segundos antes de tentar novamente
-            await new Promise(resolve => setTimeout(resolve, 60000));
+            tentativas++;
+            console.error(`⚠️ Erro Gemini (${tentativas}/${maxTentativas}): ${error.message}`);
+            
+            if (tentativas >= maxTentativas) {
+                console.error("❌ Gemini indisponível após 3 tentativas. Abortando para evitar spam.");
+                return "Desculpe, estou verificando uma informação no sistema. Poderia me chamar novamente em alguns instantes?";
+            }
+            // Aguarda 20 segundos antes de tentar novamente (reduzido para não travar muito tempo)
+            await new Promise(resolve => setTimeout(resolve, 20000));
         }
     }
 }
