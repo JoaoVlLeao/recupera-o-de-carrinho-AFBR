@@ -271,27 +271,21 @@ async function gerarRespostaGemini(historico, dados) {
                 console.error("❌ Gemini indisponível após 3 tentativas. Abortando para evitar spam.");
                 return "Desculpe, estou verificando uma informação no sistema. Poderia me chamar novamente em alguns instantes?";
             }
-            // Aguarda 20 segundos antes de tentar novamente (reduzido para não travar muito tempo)
+            // Aguarda 20 segundos antes de tentar novamente
             await new Promise(resolve => setTimeout(resolve, 20000));
         }
     }
 }
 
-// ======================= CLIENTE WHATSAPP (OTIMIZADO LOW MEMORY) =======================
+// ======================= CLIENTE WHATSAPP =======================
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: DATA_DIR }),
     puppeteer: {
         headless: true,
-        // FLAGS ESSENCIAIS PARA NÃO CAUSAR "STOPPING CONTAINER"
+        // FLAGS OTIMIZADAS PARA RAILWAY (Igual ao código do PIX)
         args: [
             '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
+            '--disable-setuid-sandbox'
         ]
     }
 });
@@ -421,34 +415,6 @@ app.post('/webhook/yampi', async (req, res) => {
 
         const resource = data.resource || {};
         
-        let telefone = 
-            getSafe(resource, "customer.data.phone.full_number") || 
-            getSafe(resource, "customer.phone.full_number") || 
-            getSafe(resource, "customer.phone.mobile") ||
-            getSafe(resource, "shipping_address.data.phone.full_number") ||
-            getSafe(resource, "shipping_address.phone.full_number") ||
-            getSafe(resource, "spreadsheet.data.customer_phone") ||
-            getSafe(resource, "phone.full_number") || // ADICIONADO PARA LER EVENTO CUSTOMER.CREATED
-            "";
-
-        telefone = telefone.replace(/\D/g, "");
-        
-        if (!telefone) {
-            console.log("❌ Telefone não encontrado no payload.");
-            return res.status(400).send("Sem telefone");
-        }
-
-        // Tenta validar o número com o WhatsApp ANTES de continuar
-        // Isso resolve o erro "No LID for user"
-        const chatIdFinal = await getWhatsappId(client, telefone);
-
-        if (!chatIdFinal) {
-            console.log(`❌ Número não registrado no WhatsApp ou inválido: ${telefone}`);
-            return res.status(200).send("Invalid Number");
-        }
-
-        const systemKey = normalizeChatKey(chatIdFinal);
-
         // --- LÓGICA DE FILTRO: APENAS CARRINHO ---
         let tipoEvento = null;
 
@@ -458,6 +424,41 @@ app.post('/webhook/yampi', async (req, res) => {
             console.log(`🛑 Evento ignorado (${data.event}). Não é Carrinho Abandonado.`);
             return res.status(200).send("Ignored");
         }
+        
+        let telefone = 
+            getSafe(resource, "customer.data.phone.full_number") || 
+            getSafe(resource, "customer.phone.full_number") || 
+            getSafe(resource, "customer.phone.mobile") ||
+            getSafe(resource, "shipping_address.data.phone.full_number") ||
+            getSafe(resource, "shipping_address.phone.full_number") ||
+            getSafe(resource, "spreadsheet.data.customer_phone") ||
+            getSafe(resource, "phone.full_number") || 
+            "";
+
+        telefone = telefone.replace(/\D/g, "");
+        
+        if (!telefone) {
+            console.log("❌ Telefone não encontrado no payload.");
+            return res.status(400).send("Sem telefone");
+        }
+
+        if (telefone.length <= 11) telefone = "55" + telefone;
+
+        // FIX: Uso robusto de ID com fallback provisório para garantir o Webhook
+        let chatIdFinal = `${telefone}@c.us`; 
+
+        try {
+            const validId = await getWhatsappId(client, telefone);
+            if (validId) {
+                chatIdFinal = validId;
+            } else {
+                console.log(`⚠️ Número não validado pela API. Usando ID provisório: ${chatIdFinal}`);
+            }
+        } catch (e) {
+            console.error("Erro na validação do número:", e.message);
+        }
+
+        const systemKey = normalizeChatKey(chatIdFinal);
 
         const nomeCliente = 
             getSafe(resource, "customer.data.name") || 
