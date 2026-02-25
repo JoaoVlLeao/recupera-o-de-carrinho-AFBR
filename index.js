@@ -43,7 +43,7 @@ async function gerarAudioCarolina(nomeCliente) {
     const API_KEY = process.env.ELEVENLABS_API_KEY;
     
     // TRUQUE DE HUMANIZAÇÃO: Reticências e vírgulas forçam a IA a fazer pausas dramáticas/respirar.
-    const texto = `Oie, ${nomeCliente}... tudo bem? Aqui é a Carolina, da AquaFit Brasil. Eu vi que você deixou alguns itens lá no carrinho... e decidi passar aqui rapidinho, pra te liberar um cupom de desconto super exclusivo!`;
+    const texto = `Oi ${nomeCliente}, tudo bem? Aqui é a Carolina da Aquafit Brasil.  Ví que você quase finalizou seu pedido com a gente, faltou pouco né?!  Você teve alguma dúvida???  - Separei um cupom pra você aqui, ele é válido até as 23:59 do dia de hoje, tá bom?`;
 
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
 
@@ -60,9 +60,12 @@ async function gerarAudioCarolina(nomeCliente) {
                 model_id: "eleven_multilingual_v2",
                 voice_settings: {
                     // Diminuímos a estabilidade para dar mais 'emoção' e menos tom de robô
-                    stability: 0.35, 
+                    stability: 0.34, 
                     // Aumentamos a similaridade para cravar o sotaque da voz original
-                    similarity_boost: 0.85 
+                    similarity_boost: 0.80,
+                    style: 0.23,
+                    speed: 1.12,
+                    use_speaker_boost: true
                 }
             })
         });
