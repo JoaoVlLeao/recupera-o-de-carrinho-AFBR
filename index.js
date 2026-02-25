@@ -37,6 +37,43 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // MANTIDO O MODELO SOLICITADO
 const MODEL_NAME = "gemini-2.5-pro"; 
 
+// ======================= ELEVENLABS (GERAÇÃO DE ÁUDIO) =======================
+async function gerarAudioCarolina(nomeCliente) {
+    const VOICE_ID = process.env.ELEVENLABS_VOICE_ID; 
+    const API_KEY = process.env.ELEVENLABS_API_KEY;
+    
+    const texto = `Oie ${nomeCliente}, tudo bem? Aqui é a Carolina da AquaFit Brasil. Vi que você deixou alguns itens no carrinho e decidi passar aqui rapidinho pra te liberar um cupom de desconto exclusivo!`;
+
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Accept": "audio/mpeg",
+                "xi-api-key": API_KEY,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                text: texto,
+                model_id: "eleven_multilingual_v2",
+                voice_settings: {
+                    stability: 0.5,
+                    similarity_boost: 0.75
+                }
+            })
+        });
+
+        if (!response.ok) throw new Error(`Erro ElevenLabs: ${response.statusText}`);
+
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer).toString('base64');
+    } catch (error) {
+        console.error("⚠️ Erro na geração de áudio:", error.message);
+        return null;
+    }
+}
+
 // ======================= STORE LOCAL =======================
 function makeLocalInMemoryStore() {
     const messages = {}; 
@@ -212,22 +249,22 @@ Você é a Carolina, consultora de vendas da AquaFit Brasil.
 OBJETIVO: Recuperar Carrinho Abandonado.
 PERSONALIDADE: Amiga, breve, natural.
 
-INSTRUÇÃO OBRIGATÓRIA PARA A PRIMEIRA MENSAGEM:
-- Cumprimente a cliente pelo nome, e pergunte se está tudo bem. 
-- Apresente-se como Carolina da AquaFit Brasil.
-- Diga que viu que ela quase comprou, mas não finalizou.
-- Envie o link para finalizar a compra: {LINK}
-- Informe que liberou um cupom de desconto válido para o dia de hoje (Cupom: DSC20).
+CONTEXTO IMPORTANTE: Você acabou de enviar um ÁUDIO para a cliente dizendo "Oie [Nome], tudo bem? Aqui é a Carolina da AquaFit Brasil. Vi que você deixou alguns itens no carrinho e decidi passar aqui rapidinho pra te liberar um cupom de desconto exclusivo!".
+
+INSTRUÇÃO OBRIGATÓRIA PARA A PRIMEIRA MENSAGEM DE TEXTO:
+- NÃO se apresente novamente e NÃO diga "oi" ou "tudo bem" de novo. O áudio já fez isso.
+- Apenas envie o link para finalizar a compra: {LINK}
+- Informe o cupom de desconto válido para hoje (Cupom: DSC20).
+- Pergunte de forma natural se ela teve alguma dificuldade no site ou se ficou com alguma dúvida sobre os produtos.
 
 REGRAS GERAIS:
-1. Pergunte se ficou alguma dúvida sobre o produto.
-2. Tente converter a venda oferecendo ajuda.
-3. Responda todas as dúvidas dela para que ela finalize a compra. 
-   - Nunca mencione envio internacional.
-   - Nunca fale em dias úteis.
-   - Diga que o prazo médio de entrega é de 7 a 14 dias.
-   - O código de rastreamento é enviado em até 24h após a compra.
-   - As entregas são feitas pelos Correios.
+1. Tente converter a venda oferecendo ajuda.
+2. Responda todas as dúvidas dela para que ela finalize a compra. 
+3. Nunca mencione envio internacional.
+4. Nunca fale em dias úteis.
+5. Diga que o prazo médio de entrega é de 7 a 14 dias.
+6. O código de rastreamento é enviado em até 24h após a compra.
+7. As entregas são feitas pelos Correios.
 `;
 
 async function gerarRespostaGemini(historico, dados) {
@@ -500,6 +537,30 @@ app.post('/webhook/yampi', async (req, res) => {
 
         console.log(`🚀 Start: ${dados.nome} - ${tipoEvento} - Tel: ${telefone} - ID: ${chatIdFinal}`);
 
+        // --- 1. GERA E ENVIA O ÁUDIO DA CAROLINA PRIMEIRO ---
+        console.log("🎙️ Gerando áudio da Carolina...");
+        
+        // Pega só o primeiro nome da cliente para o áudio soar natural
+        const primeiroNome = dados.nome ? dados.nome.split(" ")[0] : "amiga"; 
+        const audioBase64 = await gerarAudioCarolina(primeiroNome); 
+        
+        if (audioBase64) {
+            try {
+                // Envia o áudio como se estivesse segurando o botão de gravar (PTT)
+                const mediaAudio = new MessageMedia('audio/mpeg', audioBase64, 'carolina_audio.mp3');
+                await client.sendMessage(chatIdFinal, mediaAudio, { sendAudioAsVoice: true });
+                console.log("✅ Áudio enviado com sucesso!");
+                
+                // Pausa de 4 segundos para parecer humano "digitando" a próxima mensagem
+                await new Promise(r => setTimeout(r, 4000)); 
+            } catch (errAudio) {
+                console.error("⚠️ Erro ao enviar o áudio no WhatsApp:", errAudio);
+            }
+        } else {
+            console.log("⚠️ Áudio não gerado (verifique a API). Seguindo só com texto.");
+        }
+
+        // --- 2. GERA E ENVIA A IMAGEM COM O TEXTO (LINK/CUPOM) ---
         let msgInicial = await gerarRespostaGemini([], dados);
         msgInicial = appendHiddenTag(msgInicial, systemKey);
 
