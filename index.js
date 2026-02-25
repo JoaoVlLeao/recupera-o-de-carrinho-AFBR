@@ -38,12 +38,9 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const MODEL_NAME = "gemini-2.5-pro"; 
 
 // ======================= ELEVENLABS (GERAÇÃO DE ÁUDIO) =======================
-async function gerarAudioCarolina(nomeCliente) {
+async function gerarAudioCarolina(textoParaGerar) {
     const VOICE_ID = process.env.ELEVENLABS_VOICE_ID; 
     const API_KEY = process.env.ELEVENLABS_API_KEY;
-    
-    // TRUQUE DE HUMANIZAÇÃO: Reticências e vírgulas forçam a IA a fazer pausas dramáticas/respirar.
-    const texto = `Oi ${nomeCliente}, tudo bem? Aqui é a Carolina da Aquafit Brasil.  Ví que você quase finalizou seu pedido com a gente, faltou pouco né?!  Você teve alguma dúvida???  - Separei um cupom pra você aqui, ele é válido até as 23:59 do dia de hoje, tá bom?`;
 
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
 
@@ -56,7 +53,7 @@ async function gerarAudioCarolina(nomeCliente) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                text: texto,
+                text: textoParaGerar,
                 model_id: "eleven_multilingual_v2",
                 voice_settings: {
                     // Diminuímos a estabilidade para dar mais 'emoção' e menos tom de robô
@@ -542,27 +539,36 @@ app.post('/webhook/yampi', async (req, res) => {
 
         console.log(`🚀 Start: ${dados.nome} - ${tipoEvento} - Tel: ${telefone} - ID: ${chatIdFinal}`);
 
-        // --- 1. GERA E ENVIA O ÁUDIO DA CAROLINA PRIMEIRO ---
-        console.log("🎙️ Gerando áudio da Carolina...");
+        // --- 1. GERA E ENVIA OS ÁUDIOS DA CAROLINA PRIMEIRO ---
+        console.log("🎙️ Gerando áudios da Carolina...");
         
         // Pega só o primeiro nome da cliente para o áudio soar natural
         const primeiroNome = dados.nome ? dados.nome.split(" ")[0] : "amiga"; 
-        const audioBase64 = await gerarAudioCarolina(primeiroNome); 
         
-        if (audioBase64) {
-            try {
-                // Envia o áudio como se estivesse segurando o botão de gravar (PTT)
-                const mediaAudio = new MessageMedia('audio/mpeg', audioBase64, 'carolina_audio.mp3');
-                await client.sendMessage(chatIdFinal, mediaAudio, { sendAudioAsVoice: true });
-                console.log("✅ Áudio enviado com sucesso!");
-                
-                // Pausa de 4 segundos para parecer humano "digitando" a próxima mensagem
-                await new Promise(r => setTimeout(r, 4000)); 
-            } catch (errAudio) {
-                console.error("⚠️ Erro ao enviar o áudio no WhatsApp:", errAudio);
+        const frasesAudio = [
+            `Oi ${primeiroNome}, tudo bem? Aqui é a Carolina da Aquafit Brasil.`,
+            `Ví que você quase finalizou seu pedido com a gente, faltou pouco né?!  Você teve alguma dúvida???`,
+            `Separei um cupom pra você aqui, ele é válido até as 23:59 do dia de hoje, tá bom?`
+        ];
+
+        for (let i = 0; i < frasesAudio.length; i++) {
+            const audioBase64 = await gerarAudioCarolina(frasesAudio[i]); 
+            
+            if (audioBase64) {
+                try {
+                    // Envia o áudio como se estivesse segurando o botão de gravar (PTT)
+                    const mediaAudio = new MessageMedia('audio/mpeg', audioBase64, `carolina_audio_${i}.mp3`);
+                    await client.sendMessage(chatIdFinal, mediaAudio, { sendAudioAsVoice: true });
+                    console.log(`✅ Áudio ${i + 1} enviado com sucesso!`);
+                    
+                    // Pausa de 4 segundos para parecer humano enviando o próximo áudio/mensagem
+                    await new Promise(r => setTimeout(r, 4000)); 
+                } catch (errAudio) {
+                    console.error(`⚠️ Erro ao enviar o áudio ${i + 1} no WhatsApp:`, errAudio);
+                }
+            } else {
+                console.log(`⚠️ Áudio ${i + 1} não gerado (verifique a API). Seguindo.`);
             }
-        } else {
-            console.log("⚠️ Áudio não gerado (verifique a API). Seguindo só com texto.");
         }
 
         // --- 2. GERA E ENVIA A IMAGEM COM O TEXTO (LINK/CUPOM) ---
