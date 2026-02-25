@@ -60,11 +60,11 @@ async function gerarAudioCarolina(nomeCliente) {
                 model_id: "eleven_multilingual_v2",
                 voice_settings: {
                     // Diminuímos a estabilidade para dar mais 'emoção' e menos tom de robô
-                    stability: 0.34, 
+                    stability: 0.35, 
                     // Aumentamos a similaridade para cravar o sotaque da voz original
                     similarity_boost: 0.80,
-                    style: 0.23,
-                    speed: 1.12,
+                    style: 0.15,
+                    speed: 1.09,
                     use_speaker_boost: true
                 }
             })
