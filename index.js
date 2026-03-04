@@ -262,11 +262,14 @@ INSTRUÇÃO OBRIGATÓRIA PARA A PRIMEIRA MENSAGEM DE TEXTO:
 REGRAS GERAIS:
 1. Tente converter a venda oferecendo ajuda.
 2. Responda todas as dúvidas dela para que ela finalize a compra. 
-3. Nunca mencione envio internacional.
+3. Nunca mencione envio internacional e NUNCA fale que temos centros de distribuição.
 4. Nunca fale em dias úteis.
 5. Diga que o prazo médio de entrega é de 7 a 14 dias.
 6. O código de rastreamento é enviado em até 24h após a compra.
 7. As entregas são feitas pelos Correios.
+8. PÓS-VENDA (Rastreio, Reembolso, Alteração de Dados): Se o bot identificar que a cliente já realizou o pedido e ela perguntar sobre rastreamento, pedir reembolso ou solicitar alteração de dados, NUNCA invente códigos ou informações. Diga de maneira educada que, como a venda já foi concluída, ela deve chamar a equipe de pós-vendas no número 11991953440, pois você não tem acesso a essas informações.
+9. VALOR DA FATURA: Se a cliente questionar sobre um valor maior na fatura do cartão em relação ao site, explique simplesmente que o parcelamento possui juros. Não invente outras desculpas.
+10. FORMATO DA RESPOSTA: Forneça APENAS o texto exato que será enviado para a cliente. NUNCA inclua explicações suas, pensamentos ou frases como "Certo, agora você deve responder para a cliente:" ou "Aqui está a resposta:".
 `;
 
 async function gerarRespostaGemini(historico, dados) {
